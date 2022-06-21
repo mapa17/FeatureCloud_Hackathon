@@ -33,8 +33,8 @@ class States(Enum):
 class InitialState(AppState):
 
     def register(self):
-        self.register_transition(States.distribute_initial_model.value, role=Role.COORDINATOR)  # We declare that 'terminal' state is accessible from the 'initial' state.
-        self.register_transition(States.compute.value, role=Role.PARTICIPANT)  # We declare that 'terminal' state is accessible from the 'initial' state.
+        #self.register_transition(States.distribute_initial_model.value, role=Role.COORDINATOR)  # We declare that 'terminal' state is accessible from the 'initial' state.
+        self.register_transition(States.compute.value, role=Role.BOTH)  # We declare that 'terminal' state is accessible from the 'initial' state.
 
     def run(self):
         self.log(f'Starting Initialization for node {self.id} ...')
@@ -45,10 +45,10 @@ class InitialState(AppState):
         if self.is_coordinator:
             W = md.get_weights()
             self.broadcast_data((0, W))
-            return States.distribute_initial_model.value
+            #return States.distribute_initial_model.value
             #return States.receive_data.value
-        else:
-            return States.compute.value
+        
+        return States.compute.value
 
 """
 @app_state(States.distribute_initial_model.value, Role.COORDINATOR)
