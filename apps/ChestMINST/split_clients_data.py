@@ -1,4 +1,5 @@
 import numpy as np
+import os
 
 data = np.load('chestmnist.npz')
 
@@ -71,14 +72,16 @@ def client_split(x, y, fractions):
 def save_client_data(x, y, num_clients, fractions, data):
     clients_x, clients_y = client_split(x, y, fractions)
     for i in range(num_clients):
-        np.save('client_'+str(i+1)+'_x_'+data+'_.npy', clients_x[i])
-        np.save('client_'+str(i+1)+'_y_'+data+'_.npy', clients_y[i])
+        np.save(os.path.join('client '+str(i+1),'client_'+str(i+1)+'_x_'+data+'.npy'), clients_x[i])
+        np.save(os.path.join('client '+str(i+1),'client_'+str(i+1)+'_y_'+data+'.npy'), clients_y[i])
         
     
 num_clients = 2     
 client_fractions = [0.5, 0.5]
 
 #save clients data (samples)
+
+
 save_client_data(x_train_sample, y_train_sample, num_clients, client_fractions, 'train')
 save_client_data(x_val_sample, y_val_sample, num_clients, client_fractions, 'val')
 
