@@ -103,8 +103,8 @@ class ComputeState(AppState):
             log(self, f'Param lens: {lens}')
             md.set_weights(params)
             md.train_single_epoch()
-
-            log(self, f'Send to coordinator updated coefficients')
+            auc = md.get_test_score()
+            log(self, f'Local model performance AUC {auc}. Send model to coordinator')
             self.send_data_to_coordinator(md.get_weights())
 
         if self.is_coordinator:

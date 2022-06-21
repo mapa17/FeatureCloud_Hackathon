@@ -7,6 +7,7 @@ import torchvision.transforms as transforms
 import torch.nn as nn
 import torch.optim as optim
 from typing import List
+from sklearn.metrics import roc_auc_score
 
 class ChestMNIST(Dataset):
     def __init__(self, xPath : str, yPath : str):
@@ -113,12 +114,15 @@ class ModelTraining():
             lr : float = 0.001, momentum : float =0.9,
             x_train_path : str ='/mnt/input/x_train.npy',
             y_train_path : str ='/mnt/input/y_train.npy',
-            x_val_path : str ='/mnt/input/x_val.npy',
-            y_val_path : str ='/mnt/input/y_train.npy'
+            #x_test_path : str ='/mnt/input/x_val.npy',
+            #y_test_path : str ='/mnt/input/y_val.npy'
+            x_test_path : str ='/mnt/input/x_train.npy',
+            y_test_path : str ='/mnt/input/y_train.npy'
+ 
         ):
 
-        self.training_data = DataLoader(ChestMNIST(x_train_path, y_train_path), batch_size=8, shuffle=True)
-        self.validation_data = DataLoader(ChestMNIST(x_val_path, y_val_path), batch_size=8, shuffle=True)
+        self.training_data = DataLoader(ChestMNIST(x_train_path, y_train_path), batch_size=32, shuffle=True)
+        self.testing_data = DataLoader(ChestMNIST(x_test_path, y_test_path), batch_size=32, shuffle=True)
 
         self.model = ResNet18(image_channels=1, num_classes=14)
         self.optimizer = optim.SGD(self.model.parameters(), lr=lr, momentum=momentum) 
@@ -135,6 +139,36 @@ class ModelTraining():
             
             loss.backward()
             self.optimizer.step()
+
+    def get_test_score(self) -> float:
+        self.model.eval()
+        y_true = torch.tensor([])
+        y_score = torch.tensor([])
+        with torch.no_grad():
+            for inputs, targets in self.testing_data:
+                outputs = self.model(inputs)
+                
+                targets = targets.to(torch.float32)
+                # use softmax instead of standard normalization
+                outputs = outputs.softmax(dim=-1)
+
+                # Concatenate this batch to the complete results
+                y_true = torch.cat((y_true, targets), 0)
+                y_score = torch.cat((y_score, outputs), 0)
+        print(y_true.size(), y_score.size())
+
+        auc = 0
+        for i in range(y_score.shape[1]):
+            try:
+                label_auc = roc_auc_score(y_true[:, i], y_score[:, i])
+                auc += label_auc
+            except ValueError:
+                # If all labels are of the same value, an ValueError is thrown
+                # Equal to: auc += 0.0
+                pass
+
+        return auc / y_score.shape[1]
+
 
     def get_weights(self) -> List[numpy.ndarray]:
         return [t.detach().numpy() for t in self.model.state_dict().values()]

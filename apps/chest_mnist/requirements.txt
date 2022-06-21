@@ -3,5 +3,5 @@ numpy
 pandas
 torch
 torchvision
-#tqdm
 pillow
+sklearn
