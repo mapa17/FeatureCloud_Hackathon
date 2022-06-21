@@ -99,7 +99,8 @@ class ComputeState(AppState):
             return States.terminal.value
         else:
             log(self, f'Training local model one more time ...')
-            
+            lens = [x.size for x in params]
+            log(self, f'Param lens: {lens}')
             md.set_weights(params)
             md.train_single_epoch()
 

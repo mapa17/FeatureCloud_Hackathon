@@ -140,6 +140,6 @@ class ModelTraining():
         return [t.detach().numpy() for t in self.model.state_dict().values()]
     
     def set_weights(self, weights : List[numpy.ndarray]):
-        new_parameters = {k: torch.from_numpy(v) for k, v in zip(self.__parameter_keys, weights)}
+        new_parameters = {k: torch.from_numpy(v)  if v.size > 1 else torch.tensor(v) for k, v in zip(self.__parameter_keys, weights) }
         self.model.load_state_dict(new_parameters)
 
