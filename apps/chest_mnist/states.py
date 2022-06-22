@@ -109,12 +109,14 @@ class ComputeState(AppState):
             return States.terminal.value
         else:
             log(self, f'Training local model one more time ...')
-            lens = [x.size for x in params]
-            log(self, f'Param lens: {lens}')
+            #lens = [x.size for x in params]
+            #log(self, f'Param lens: {lens}')
             md.set_weights(params)
             md.train_single_epoch()
-            auc = md.get_test_score()
-            log(self, f'Local model performance AUC {auc}. Send model to coordinator')
+            #auc = md.get_test_score()
+            #log(self, f'Local model performance AUC {auc}. Send model to coordinator')
+            p, r, f1 = md.get_test_score()
+            log(self, f'Local model performance precision: {p}, recall: {r}, f1: {f1}. Send model to coordinator')
             self.send_data_to_coordinator(md.get_weights())
 
         if self.is_coordinator:
@@ -134,11 +136,17 @@ class AggregationState(AppState):
     def run(self):
 
         iteration = self.load('iteration')
-        #data = self.gather_data(2, is_json=False)
+
         log(self, f'Starting model weight aggregation for iteration {iteration}')
         weights = self.await_data(len(self.clients), is_json=False)
-        log(self, f'Got {len(weights)} model weights ...')
+        log(self, f'Got {len(weights)} model weights. Averaging them ...')
         agg_weights = np.mean(weights, axis=0)
+
+        log(self, f'Evaluate global model ...')
+        md = self.load('md')
+        md.set_weights(agg_weights)
+        p, r, f1 = md.get_test_score()
+        log(self, f'[Iteration {iteration}] Global model performance precision: {p}, recall: {r}, f1: {f1}')
 
         iteration+=1
         self.store('iteration', iteration)

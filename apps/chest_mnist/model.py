@@ -7,7 +7,7 @@ import torchvision.transforms as transforms
 import torch.nn as nn
 import torch.optim as optim
 from typing import Any, List
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, precision_recall_fscore_support
 from typing import Callable
 
 class ChestMNIST(Dataset):
@@ -157,22 +157,26 @@ class ModelTraining():
 
         with torch.no_grad():
             for inputs, targets in test_data_loader:
-                outputs = self.model(inputs)
+                logits = self.model(inputs)
                 
                 targets = targets.to(torch.float32)
                 # use softmax instead of standard normalization
                 #outputs = outputs.softmax(dim=-1)
-                predictions = (outputs > 0.5).int()
+                predictions = (logits > 0.5).int()
 
                 # Concatenate this batch to the complete results
                 y_true = torch.cat((y_true, targets), 0)
                 y_score = torch.cat((y_score, predictions), 0)
         print(y_true.size(), y_score.size())
 
+        precision, recall, f1, support = precision_recall_fscore_support(y_true, y_score)
+        return precision, recall, f1
         auc = 0
+        """
         for i in range(y_score.shape[1]):
             try:
                 label_auc = roc_auc_score(y_true[:, i], y_score[:, i])
+                precision, recall, f1, support = precision_recall_fscore_support(y_true[:, i])
                 auc += label_auc
             except ValueError:
                 # If all labels are of the same value, an ValueError is thrown
@@ -180,6 +184,7 @@ class ModelTraining():
                 pass
 
         return auc / y_score.shape[1]
+        """
 
 
     def get_weights(self) -> List[numpy.ndarray]:
