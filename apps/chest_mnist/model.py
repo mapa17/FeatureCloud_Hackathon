@@ -114,8 +114,8 @@ class ModelTraining():
             lr : float = 0.001, momentum : float = 0.9,
             x_train_path : str ='/mnt/input/x_train.npy',
             y_train_path : str ='/mnt/input/y_train.npy',
-            x_test_path : str ='/mnt/input/x_test.npy',
-            y_test_path : str ='/mnt/input/y_test.npy'
+            x_test_path : str ='/mnt/input/x_val.npy',
+            y_test_path : str ='/mnt/input/y_val.npy'
         ):
 
         if x_train_path is None:
