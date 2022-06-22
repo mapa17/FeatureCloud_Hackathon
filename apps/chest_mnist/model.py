@@ -9,7 +9,7 @@ import torch.optim as optim
 from typing import Any, List
 from sklearn.metrics import roc_auc_score, precision_recall_fscore_support
 from typing import Callable
-
+import time
 class ChestMNIST(Dataset):
     def __init__(self, xPath : str, yPath : str):
         self.img = np.load(xPath)
@@ -115,19 +115,19 @@ class ModelTraining():
             lr : float = 0.001, momentum : float = 0.9,
             x_train_path : str ='/mnt/input/x_train.npy',
             y_train_path : str ='/mnt/input/y_train.npy',
-            x_test_path : str ='/mnt/input/x_test.npy',
-            y_test_path : str ='/mnt/input/y_test.npy'
+            x_test_path : str ='/mnt/input/x_val.npy',
+            y_test_path : str ='/mnt/input/y_val.npy'
         ):
 
         if x_train_path is None:
             self.training_data = None
         else:
-            self.training_data = DataLoader(ChestMNIST(x_train_path, y_train_path), batch_size=128, shuffle=True)
+            self.training_data = DataLoader(ChestMNIST(x_train_path, y_train_path), batch_size=256, shuffle=True)
         
         if x_test_path is None:
             self.testing_data = None
         else:
-            self.testing_data = DataLoader(ChestMNIST(x_test_path, y_test_path), batch_size=128, shuffle=True)
+            self.testing_data = DataLoader(ChestMNIST(x_test_path, y_test_path), batch_size=256, shuffle=True)
 
         self.model = ResNet18(image_channels=1, num_classes=14)
         self.optimizer = optim.SGD(self.model.parameters(), lr=lr, momentum=momentum) 
@@ -135,9 +135,9 @@ class ModelTraining():
         self.__parameter_keys = self.model.state_dict().keys()
 
     #def train_single_epoch(self, log : Callable[str, None]):
-    def train_single_epoch(self):
+    def train_single_epoch(self, log : Callable = None):
         for batch_idx, (inputs, targets) in enumerate(self.training_data):
-            #log(f'Running batch {batch_idx} ...')
+            batch_start = time.time()
             self.optimizer.zero_grad()
             outputs = self.model(inputs)
             
@@ -146,8 +146,13 @@ class ModelTraining():
             
             loss.backward()
             self.optimizer.step()
+            batch_end = time.time()
+            
+            if log:
+                log(f'Training batch {batch_idx} for {batch_end - batch_start:2.2f} sec ...')
 
-    def get_test_score(self, test_data_loader : Any = None) -> float:
+
+    def get_test_score(self, log, test_data_loader : Any = None) -> Any:
         self.model.eval()
         y_true = torch.tensor([])
         y_score = torch.tensor([])
@@ -158,11 +163,13 @@ class ModelTraining():
         with torch.no_grad():
             for inputs, targets in test_data_loader:
                 logits = self.model(inputs)
+                scores = nn.functional.sigmoid(logits)
                 
                 targets = targets.to(torch.float32)
                 # use softmax instead of standard normalization
                 #outputs = outputs.softmax(dim=-1)
-                predictions = (logits > 0.5).int()
+                predictions = (scores > 0.5).int()
+                log(f'Scores output: {scores}, Predictions: {predictions}')
 
                 # Concatenate this batch to the complete results
                 y_true = torch.cat((y_true, targets), 0)

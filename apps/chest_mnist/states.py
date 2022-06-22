@@ -40,14 +40,15 @@ class InitialState(AppState):
     def run(self):
         self.log(f'Starting Initialization for node {self.id} ...')
 
-        md = ModelTraining()
-        self.store('md', md)
-
         if self.is_coordinator:
+            md = ModelTraining(x_test_path='/mnt/input/x_test.npy', y_test_path='/mnt/input/y_test.npy')
+            self.store('md', md)
+
             W = md.get_weights()
             self.broadcast_data((0, W))
-            #return States.distribute_initial_model.value
-            #return States.receive_data.value
+        else:
+            md = ModelTraining()
+            self.store('md', md)
         
         return States.compute.value
 
@@ -112,10 +113,10 @@ class ComputeState(AppState):
             #lens = [x.size for x in params]
             #log(self, f'Param lens: {lens}')
             md.set_weights(params)
-            md.train_single_epoch()
+            md.train_single_epoch(self.mylog)
             #auc = md.get_test_score()
             #log(self, f'Local model performance AUC {auc}. Send model to coordinator')
-            p, r, f1 = md.get_test_score()
+            p, r, f1 = md.get_test_score(self.mylog)
             log(self, f'Local model performance precision: {p}, recall: {r}, f1: {f1}. Send model to coordinator')
             self.send_data_to_coordinator(md.get_weights())
 
@@ -127,6 +128,9 @@ class ComputeState(AppState):
 
 @app_state(States.aggregate_models.value, Role.COORDINATOR)
 class AggregationState(AppState):
+
+    def mylog(self, msg):
+       self.log(f'{self.id}/{"Coordinator" if self.is_coordinator else "Participants"}: {msg}')
 
     def register(self):
         self.register_transition(States.compute.value, role=Role.COORDINATOR)  # We declare that 'terminal' state is accessible from the 'initial' state.
@@ -145,7 +149,7 @@ class AggregationState(AppState):
         log(self, f'Evaluate global model ...')
         md = self.load('md')
         md.set_weights(agg_weights)
-        p, r, f1 = md.get_test_score()
+        p, r, f1 = md.get_test_score(self.mylog)
         log(self, f'[Iteration {iteration}] Global model performance precision: {p}, recall: {r}, f1: {f1}')
 
         iteration+=1
