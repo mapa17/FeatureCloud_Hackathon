@@ -113,12 +113,14 @@ class ResNet18(nn.Module):
 
 class ModelTraining():
     def __init__(self,
-            lr : float = 0.001, momentum : float = 0.9,
+            lr : float = 0.0001, momentum : float = 0.9, batch_size=128,
             device_str : str = 'cpu',
             x_train_path : str ='/mnt/input/x_train.npy',
             y_train_path : str ='/mnt/input/y_train.npy',
-            x_test_path : str ='/mnt/input/x_val.npy',
-            y_test_path : str ='/mnt/input/y_val.npy'
+            x_test_path : str ='/mnt/input/x_text.npy',
+            y_test_path : str ='/mnt/input/y_test.npy',
+            x_val_path : str ='/mnt/input/x_val.npy',
+            y_val_path : str ='/mnt/input/y_val.npy'
         ):
 
         self.device = torch.device(device_str)
@@ -126,47 +128,81 @@ class ModelTraining():
         if x_train_path is None:
             self.training_data = None
         else:
-            self.training_data = DataLoader(ChestMNIST(x_train_path, y_train_path), batch_size=256, shuffle=True)
+            self.training_data = DataLoader(ChestMNIST(x_train_path, y_train_path), batch_size=batch_size, shuffle=True)
         
         if x_test_path is None:
             self.testing_data = None
         else:
-            self.testing_data = DataLoader(ChestMNIST(x_test_path, y_test_path), batch_size=256, shuffle=True)
-
+            self.testing_data = DataLoader(ChestMNIST(x_test_path, y_test_path), batch_size=batch_size, shuffle=False)
+    
+        if x_val_path is None:
+            self.val_data = None
+        else:
+            self.val_data = DataLoader(ChestMNIST(x_val_path, y_val_path), batch_size=batch_size, shuffle=False)
 
         self.model = ResNet18(image_channels=1, num_classes=14).to(self.device)
         self.optimizer = optim.SGD(self.model.parameters(), lr=lr, momentum=momentum) 
-        self.loss_fn = nn.BCEWithLogitsLoss()
+        #self.optimizer = optim.Adam(self.model.parameters()) 
+        class_weights = 4*np.sqrt(np.array([8.630769 ,  36.19355  ,   7.9349365,   5.712831 ,  21.412214 ,
+        17.69716  ,  79.014084 ,  20.701107 ,  20.932837 ,  47.542374 ,
+        42.82443  ,  59.68085  ,  32.057144 , 701.25])).astype(np.float32)
+        self.loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(class_weights).to(self.device))
         self.__parameter_keys = self.model.state_dict().keys()
 
     #def train_single_epoch(self, log : Callable[str, None]):
     def train_single_epoch(self, log : Callable = None):
 
-        losses = []
+        avg_training_loss = []
 
         for batch_idx, (inputs, targets) in enumerate(self.training_data):
             inputs = inputs.to(self.device)
             targets = targets.to(self.device)
             batch_start = time.time()
-            
+
             self.optimizer.zero_grad()
             outputs = self.model(inputs)
             
             targets = targets.to(torch.float32)
-            loss = self.loss_fn(outputs, targets)
+            training_loss = self.loss_fn(outputs, targets)
             
-            loss.backward()
+            training_loss.backward()
             self.optimizer.step()
             batch_end = time.time()
             
-            current_loss = loss.cpu().detach().numpy()
-            losses.append(current_loss)
+            current_loss = training_loss.cpu().detach().numpy()
+            avg_training_loss.append(current_loss)
 
             if log:
                 log(f'Training batch {batch_idx}/{len(self.training_data)} for {batch_end - batch_start:2.2f} sec , loss: {current_loss}...')
 
-        avg_loss = np.mean(losses)
-        return avg_loss
+        avg_val_loss = []
+        with torch.no_grad():
+            for batch_idx, (inputs, targets) in enumerate(self.val_data):
+                inputs = inputs.to(self.device)
+                targets = targets.to(self.device)
+                batch_start = time.time()
+
+                self.optimizer.zero_grad()
+                outputs = self.model(inputs)
+                
+                targets = targets.to(torch.float32)
+                val_loss = self.loss_fn(outputs, targets)
+                
+                batch_end = time.time()
+                
+                current_loss = val_loss.cpu().detach().numpy()
+                avg_val_loss.append(current_loss)
+
+                if log:
+                    log(f'Validation batch {batch_idx}/{len(self.val_data)} for {batch_end - batch_start:2.2f} sec , loss: {current_loss}...')
+
+
+        avg_training_loss = np.mean(avg_training_loss)
+        avg_val_loss = np.mean(avg_val_loss)
+
+        if log:
+            log(f'Avg. Training Loss: {avg_training_loss}, Avg. Val Loss: {avg_val_loss}')
+        return avg_training_loss, avg_val_loss
 
 
     def get_test_score(self, log, test_data_loader : Any = None) -> Any:
@@ -189,7 +225,7 @@ class ModelTraining():
                 #outputs = outputs.softmax(dim=-1)
                 #predictions = (scores > 0.5).float()
                 predictions = scores
-                log(f'Scores output: {scores}, Predictions: {predictions}')
+                #log(f'Scores output: {scores}, Predictions: {predictions}')
 
                 # Concatenate this batch to the complete results
                 y_true = torch.cat((y_true, targets), 0)
