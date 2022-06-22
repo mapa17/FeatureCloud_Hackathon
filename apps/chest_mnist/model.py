@@ -148,6 +148,7 @@ class ModelTraining():
             inputs = inputs.to(self.device)
             targets = targets.to(self.device)
             batch_start = time.time()
+            
             self.optimizer.zero_grad()
             outputs = self.model(inputs)
             
