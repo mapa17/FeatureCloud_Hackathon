@@ -6,8 +6,9 @@ from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 import torch.nn as nn
 import torch.optim as optim
-from typing import List
+from typing import Any, List
 from sklearn.metrics import roc_auc_score
+from typing import Callable
 
 class ChestMNIST(Dataset):
     def __init__(self, xPath : str, yPath : str):
@@ -111,26 +112,32 @@ class ResNet18(nn.Module):
 
 class ModelTraining():
     def __init__(self,
-            lr : float = 0.001, momentum : float =0.9,
+            lr : float = 0.001, momentum : float = 0.9,
             x_train_path : str ='/mnt/input/x_train.npy',
             y_train_path : str ='/mnt/input/y_train.npy',
-            #x_test_path : str ='/mnt/input/x_val.npy',
-            #y_test_path : str ='/mnt/input/y_val.npy'
-            x_test_path : str ='/mnt/input/x_train.npy',
-            y_test_path : str ='/mnt/input/y_train.npy'
- 
+            x_test_path : str ='/mnt/input/x_test.npy',
+            y_test_path : str ='/mnt/input/y_test.npy'
         ):
 
-        self.training_data = DataLoader(ChestMNIST(x_train_path, y_train_path), batch_size=32, shuffle=True)
-        self.testing_data = DataLoader(ChestMNIST(x_test_path, y_test_path), batch_size=32, shuffle=True)
+        if x_train_path is None:
+            self.training_data = None
+        else:
+            self.training_data = DataLoader(ChestMNIST(x_train_path, y_train_path), batch_size=128, shuffle=True)
+        
+        if x_test_path is None:
+            self.testing_data = None
+        else:
+            self.testing_data = DataLoader(ChestMNIST(x_test_path, y_test_path), batch_size=128, shuffle=True)
 
         self.model = ResNet18(image_channels=1, num_classes=14)
         self.optimizer = optim.SGD(self.model.parameters(), lr=lr, momentum=momentum) 
         self.loss_fn = nn.BCEWithLogitsLoss()
         self.__parameter_keys = self.model.state_dict().keys()
 
+    #def train_single_epoch(self, log : Callable[str, None]):
     def train_single_epoch(self):
-        for inputs, targets in self.training_data:
+        for batch_idx, (inputs, targets) in enumerate(self.training_data):
+            #log(f'Running batch {batch_idx} ...')
             self.optimizer.zero_grad()
             outputs = self.model(inputs)
             
@@ -140,21 +147,26 @@ class ModelTraining():
             loss.backward()
             self.optimizer.step()
 
-    def get_test_score(self) -> float:
+    def get_test_score(self, test_data_loader : Any = None) -> float:
         self.model.eval()
         y_true = torch.tensor([])
         y_score = torch.tensor([])
+
+        if test_data_loader is None:
+            test_data_loader = self.testing_data
+
         with torch.no_grad():
-            for inputs, targets in self.testing_data:
+            for inputs, targets in test_data_loader:
                 outputs = self.model(inputs)
                 
                 targets = targets.to(torch.float32)
                 # use softmax instead of standard normalization
-                outputs = outputs.softmax(dim=-1)
+                #outputs = outputs.softmax(dim=-1)
+                predictions = (outputs > 0.5).int()
 
                 # Concatenate this batch to the complete results
                 y_true = torch.cat((y_true, targets), 0)
-                y_score = torch.cat((y_score, outputs), 0)
+                y_score = torch.cat((y_score, predictions), 0)
         print(y_true.size(), y_score.size())
 
         auc = 0
@@ -174,6 +186,13 @@ class ModelTraining():
         return [t.detach().numpy() for t in self.model.state_dict().values()]
     
     def set_weights(self, weights : List[numpy.ndarray]):
-        new_parameters = {k: torch.from_numpy(v)  if v.size > 1 else torch.tensor(v) for k, v in zip(self.__parameter_keys, weights) }
+        #new_parameters = {k: torch.from_numpy(v)  if v.size > 1 else torch.tensor(v) for k, v in zip(self.__parameter_keys, weights) }
+        new_parameters = {k: torch.tensor(v) for k, v in zip(self.__parameter_keys, weights)}
         self.model.load_state_dict(new_parameters)
+    
+    def save_model(self, path : str):
+        torch.save(self.model.state_dict(), path)
+
+    def load_model(self, path : str):
+        self.model.load_state_dict(torch.load(path))
 

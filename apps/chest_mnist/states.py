@@ -9,6 +9,7 @@ import torch
 from torch.utils.data import Dataset
 
 from model import ModelTraining
+from functools import partial
 
 df_train = pd.DataFrame()
 df_test = pd.DataFrame()
@@ -86,6 +87,9 @@ class ComputeState(AppState):
         self.register_transition(States.compute.value, role=Role.PARTICIPANT)  # We declare that 'terminal' state is accessible from the 'initial' state.
         self.register_transition(States.terminal.value, role=Role.BOTH)  # We declare that 'terminal' state is accessible from the 'initial' state.
 
+    def mylog(self, msg):
+       self.log(f'{self.id}/{"Coordinator" if self.is_coordinator else "Participants"}: {msg}')
+
     def run(self):
 
         log(self, "Performing compute ...")
@@ -96,6 +100,12 @@ class ComputeState(AppState):
 
         if iter == -1:
             log(self, f'Done!')
+
+            if self.is_coordinator:
+                out_path = '/mnt/output/global_model.pth'
+                log(self, f'Storing global model to {out_path} ...')
+                md.save_model(out_path)
+            
             return States.terminal.value
         else:
             log(self, f'Training local model one more time ...')
