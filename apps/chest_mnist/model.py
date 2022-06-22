@@ -10,6 +10,7 @@ from typing import Any, List
 from sklearn.metrics import roc_auc_score, precision_recall_fscore_support
 from typing import Callable
 import time
+from torch.utils.data.dataloader import default_collate
 class ChestMNIST(Dataset):
     def __init__(self, xPath : str, yPath : str):
         self.img = np.load(xPath)
@@ -113,11 +114,14 @@ class ResNet18(nn.Module):
 class ModelTraining():
     def __init__(self,
             lr : float = 0.001, momentum : float = 0.9,
+            device_str : str = 'cpu',
             x_train_path : str ='/mnt/input/x_train.npy',
             y_train_path : str ='/mnt/input/y_train.npy',
             x_test_path : str ='/mnt/input/x_val.npy',
             y_test_path : str ='/mnt/input/y_val.npy'
         ):
+
+        self.device = torch.device(device_str)
 
         if x_train_path is None:
             self.training_data = None
@@ -129,14 +133,20 @@ class ModelTraining():
         else:
             self.testing_data = DataLoader(ChestMNIST(x_test_path, y_test_path), batch_size=256, shuffle=True)
 
-        self.model = ResNet18(image_channels=1, num_classes=14)
+
+        self.model = ResNet18(image_channels=1, num_classes=14).to(self.device)
         self.optimizer = optim.SGD(self.model.parameters(), lr=lr, momentum=momentum) 
         self.loss_fn = nn.BCEWithLogitsLoss()
         self.__parameter_keys = self.model.state_dict().keys()
 
     #def train_single_epoch(self, log : Callable[str, None]):
     def train_single_epoch(self, log : Callable = None):
+
+        losses = []
+
         for batch_idx, (inputs, targets) in enumerate(self.training_data):
+            inputs = inputs.to(self.device)
+            targets = targets.to(self.device)
             batch_start = time.time()
             self.optimizer.zero_grad()
             outputs = self.model(inputs)
@@ -148,36 +158,47 @@ class ModelTraining():
             self.optimizer.step()
             batch_end = time.time()
             
+            current_loss = loss.cpu().detach().numpy()
+            losses.append(current_loss)
+
             if log:
-                log(f'Training batch {batch_idx} for {batch_end - batch_start:2.2f} sec ...')
+                log(f'Training batch {batch_idx}/{len(self.training_data)} for {batch_end - batch_start:2.2f} sec , loss: {current_loss}...')
+
+        avg_loss = np.mean(losses)
+        return avg_loss
 
 
     def get_test_score(self, log, test_data_loader : Any = None) -> Any:
         self.model.eval()
-        y_true = torch.tensor([])
-        y_score = torch.tensor([])
+        y_true = torch.zeros(1, 14, dtype=torch.float32).to(self.device)
+        y_score = torch.zeros(1, 14).to(self.device)
 
         if test_data_loader is None:
             test_data_loader = self.testing_data
 
         with torch.no_grad():
             for inputs, targets in test_data_loader:
+                targets = targets.to(torch.float32).to(self.device)
+                inputs = inputs.to(self.device)
+
                 logits = self.model(inputs)
-                scores = nn.functional.sigmoid(logits)
+                scores = torch.sigmoid(logits)
                 
-                targets = targets.to(torch.float32)
                 # use softmax instead of standard normalization
                 #outputs = outputs.softmax(dim=-1)
-                predictions = (scores > 0.5).int()
+                #predictions = (scores > 0.5).float()
+                predictions = scores
                 log(f'Scores output: {scores}, Predictions: {predictions}')
 
                 # Concatenate this batch to the complete results
                 y_true = torch.cat((y_true, targets), 0)
                 y_score = torch.cat((y_score, predictions), 0)
-        print(y_true.size(), y_score.size())
 
+        y_true = y_true.cpu().detach().numpy()
+        y_score = y_score.cpu().detach().numpy()
+        return y_true, y_score
         precision, recall, f1, support = precision_recall_fscore_support(y_true, y_score)
-        return precision, recall, f1
+        return precision, recall, f1, y_score, y_true
         auc = 0
         """
         for i in range(y_score.shape[1]):
