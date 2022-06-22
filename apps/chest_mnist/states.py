@@ -138,16 +138,36 @@ class AggregationState(AppState):
         iteration = self.load('iteration')
 
         log(self, f'Starting model weight aggregation for iteration {iteration}')
-        weights = self.await_data(len(self.clients), is_json=False)
-        log(self, f'Got {len(weights)} model weights. Averaging them ...')
-        agg_weights = np.mean(weights, axis=0)
+        weights_all_cli = self.await_data(len(self.clients), is_json=False)
+        log(self, f'Got {len(weights_all_cli)} model weights. Averaging them ...')
+        agg_weights = []
+        ind2tensor_dict = {}
+        tensor_list_len = len(weights_all_cli[0])
+        for weights in weights_all_cli:
+            # weights: torch.Tensor[]
+            # use torch.Tensor.unsqueeze() to expand the dimension of a tensor 
+            for i in range(tensor_list_len):
+                weights_i = weights[i]
+                n_tensor_dim = len(list(weights_i.shape))
+                if i not in ind2tensor_dict: 
+                    ind2tensor_dict[i] = torch.tensor([])
+                ind2tensor_dict[i] = torch.cat((ind2tensor_dict[i], torch.unsqueeze(weights_i, n_tensor_dim)), n_tensor_dim)
+    
+        for i in range(tensor_list_len):
+            weights_i = ind2tensor_dict[i]
+            n_tensor_dim = len(list(weights_i.shape))
+            #log(self, 'Number of tensor dimensions: {n_tensor_dim}')
+            mean_weights = torch.mean(input=weights_i, dim=n_tensor_dim-1)
+            agg_weights.append(mean_weights)
+        
+        ind2tensor_dict = None
 
         log(self, f'Evaluate global model ...')
         md = self.load('md')
         md.set_weights(agg_weights)
         p, r, f1 = md.get_test_score()
         log(self, f'[Iteration {iteration}] Global model performance precision: {p}, recall: {r}, f1: {f1}')
-
+           
         iteration+=1
         self.store('iteration', iteration)
 
