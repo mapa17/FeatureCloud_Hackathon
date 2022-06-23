@@ -116,7 +116,7 @@ class ComputeState(AppState):
             training_loss, val_loss = md.train_single_epoch(self.mylog)
             #auc = md.get_test_score()
             #log(self, f'Local model performance AUC {auc}. Send model to coordinator')
-            p, r, f1 = md.get_test_score(self.mylog)
+            p, r, f1, s, l = md.get_test_score(self.mylog)
             log(self, f'Local model performance precision: {p}, recall: {r}, f1: {f1}. Send model to coordinator')
             self.send_data_to_coordinator(md.get_weights())
 
@@ -149,7 +149,7 @@ class AggregationState(AppState):
         log(self, f'Evaluate global model ...')
         md = self.load('md')
         md.set_weights(agg_weights)
-        p, r, f1 = md.get_test_score(self.mylog)
+        p, r, f1, s, l = md.get_test_score(self.mylog)
         log(self, f'[Iteration {iteration}] Global model performance precision: {p}, recall: {r}, f1: {f1}')
 
         iteration+=1
@@ -157,6 +157,9 @@ class AggregationState(AppState):
 
         # Stop the process after 3 iterations
         if iteration >= 3:
+            log(self, f'Storing prediction on test set in /mnt/output/test_predictions.csv ...')
+            test_results = pd.DataFrame(s.astype(int), columns=range(14))
+            test_results.to_csv('/mnt/output/test_predictions.csv', index=False)
             iteration =-1
 
         log(self, f'Send results back ...')

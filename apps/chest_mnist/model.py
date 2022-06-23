@@ -131,8 +131,13 @@ class ModelTraining():
 
         if x_train_path is None:
             self.training_data = None
+            class_weights = torch.Tensor([1.0])
         else:
             self.training_data = DataLoader(ChestMNIST(x_train_path, y_train_path), batch_size=batch_size, shuffle=True)
+            T=torch.cat([x[1] for x in self.training_data])
+            class_weights = T.shape[0] / T.sum(axis=0)
+            class_weights = 4*np.sqrt(class_weights)
+    
         
         if x_test_path is None:
             self.testing_data = None
@@ -147,7 +152,6 @@ class ModelTraining():
         self.model = ResNet18(image_channels=1, num_classes=14).to(self.device)
         self.optimizer = optim.SGD(self.model.parameters(), lr=lr, momentum=momentum) 
         #self.optimizer = optim.Adam(self.model.parameters()) 
-        class_weights = 4*np.sqrt(np.array([8.630769, 36.19355, 7.9349365, 5.712831, 21.412214, 17.69716, 79.014084, 20.701107, 20.932837, 47.542374, 42.82443, 59.68085, 32.057144, 701.25])).astype(np.float32)
         self.loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(class_weights).to(self.device))
         self.__parameter_keys = self.model.state_dict().keys()
 
@@ -158,11 +162,13 @@ class ModelTraining():
 
         if log:
             #log(f'Training batch {batch_idx}/{len(self.training_data)} for {batch_end - batch_start:2.2f} sec , loss: {current_loss}...')
-            log(f'Training: ')
+            log(f'Training ...')
+
+        training_start = time.time()
         for batch_idx, (inputs, targets) in enumerate(self.training_data):
             inputs = inputs.to(self.device)
             targets = targets.to(self.device)
-            batch_start = time.time()
+            #batch_start = time.time()
 
             self.optimizer.zero_grad()
             outputs = self.model(inputs)
@@ -172,22 +178,23 @@ class ModelTraining():
             
             training_loss.backward()
             self.optimizer.step()
-            batch_end = time.time()
+            #batch_end = time.time()
             
             current_loss = training_loss.cpu().detach().numpy()
             avg_training_loss.append(current_loss)
 
             if log:
                 #log(f'Training batch {batch_idx}/{len(self.training_data)} for {batch_end - batch_start:2.2f} sec , loss: {current_loss}...')
-                log(f'.')
+                pass
+        
 
-        log(f'Validation:')
+        log(f'Validation ...')
         avg_val_loss = []
         with torch.no_grad():
             for batch_idx, (inputs, targets) in enumerate(self.val_data):
                 inputs = inputs.to(self.device)
                 targets = targets.to(self.device)
-                batch_start = time.time()
+                #batch_start = time.time()
 
                 self.optimizer.zero_grad()
                 outputs = self.model(inputs)
@@ -195,21 +202,21 @@ class ModelTraining():
                 targets = targets.to(torch.float32)
                 val_loss = self.loss_fn(outputs, targets)
                 
-                batch_end = time.time()
-                
+                #batch_end = time.time()
                 current_loss = val_loss.cpu().detach().numpy()
                 avg_val_loss.append(current_loss)
 
                 if log:
                     #log(f'Validation batch {batch_idx}/{len(self.val_data)} for {batch_end - batch_start:2.2f} sec , loss: {current_loss}...')
-                    log(f'.', sep='')
+                    #log(f'.', sep='')
+                    pass
 
-
+        training_end = time.time()
         avg_training_loss = np.mean(avg_training_loss)
         avg_val_loss = np.mean(avg_val_loss)
 
         if log:
-            log(f'Avg. Training Loss: {avg_training_loss}, Avg. Val Loss: {avg_val_loss}')
+            log(f'Training Time: {training_end-training_start:2.2f} sec, Avg. Training Loss: {avg_training_loss}, Avg. Val Loss: {avg_val_loss}')
         return avg_training_loss, avg_val_loss
 
 
@@ -238,6 +245,9 @@ class ModelTraining():
 
         y_true = y_true.cpu().detach().numpy()
         y_score = y_score.cpu().detach().numpy()
+        # Remove the first artificial entry
+        y_true = y_true[1:]
+        y_score = y_score[1:]
         
         # Cannot handle mixture
         #precision, recall, f1, support = precision_recall_fscore_support(y_true, y_score)
@@ -258,8 +268,7 @@ class ModelTraining():
                 if log:
                     log(f'Calculating precision recall for feature {i} failed! {e}')
                 pass
-        return precisions, recalls, f1s, y_score 
-        #return auc / y_score.shape[1]
+        return precisions, recalls, f1s, y_score, y_true
 
 
     def get_weights(self) -> List[numpy.ndarray]:
