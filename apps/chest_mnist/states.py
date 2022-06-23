@@ -114,6 +114,7 @@ class ComputeState(AppState):
             #log(self, f'Param lens: {lens}')
             md.set_weights(params)
             training_loss, val_loss = md.train_single_epoch(self.mylog)
+            log(self, f'Avg. Training loss {training_loss}, avg. validation loss {val_loss}')
             #auc = md.get_test_score()
             #log(self, f'Local model performance AUC {auc}. Send model to coordinator')
             p, r, f1, s, l = md.get_test_score(self.mylog)
