@@ -62,10 +62,12 @@ class ResNet18(nn.Module):
         
         super(ResNet18, self).__init__()
         self.in_channels = 64
-        self.conv1 = nn.Conv2d(image_channels, 64, kernel_size=7, stride=2, padding=3)
+        #self.conv1 = nn.Conv2d(image_channels, 64, kernel_size=7, stride=2, padding=3)
+        self.conv1 = nn.Conv2d(image_channels, 64, kernel_size=3, stride=1, padding=1)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU()
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.outputs = nn.ModuleList([nn.Sequential(nn.Dropout(p=0.2),nn.Linear(in_features=512, out_features=1)) for _ in range(num_classes)])
         
         #resnet layers
         self.layer1 = self.__make_layer(64, 64, stride=1)
@@ -101,8 +103,10 @@ class ResNet18(nn.Module):
         
         x = self.avgpool(x)
         x = x.view(x.shape[0], -1)
-        x = self.fc(x)
-        return x 
+        #x = self.fc(x)
+
+        results = torch.cat([output(x) for output in self.outputs], axis=1)
+        return results
     
     def identity_downsample(self, in_channels, out_channels):
         
@@ -113,7 +117,7 @@ class ResNet18(nn.Module):
 
 class ModelTraining():
     def __init__(self,
-            lr : float = 0.0001, momentum : float = 0.9, batch_size=128,
+            lr : float = 0.001, momentum : float = 0.9, batch_size=128,
             device_str : str = 'cpu',
             x_train_path : str ='/mnt/input/x_train.npy',
             y_train_path : str ='/mnt/input/y_train.npy',
@@ -143,9 +147,7 @@ class ModelTraining():
         self.model = ResNet18(image_channels=1, num_classes=14).to(self.device)
         self.optimizer = optim.SGD(self.model.parameters(), lr=lr, momentum=momentum) 
         #self.optimizer = optim.Adam(self.model.parameters()) 
-        class_weights = 4*np.sqrt(np.array([8.630769 ,  36.19355  ,   7.9349365,   5.712831 ,  21.412214 ,
-        17.69716  ,  79.014084 ,  20.701107 ,  20.932837 ,  47.542374 ,
-        42.82443  ,  59.68085  ,  32.057144 , 701.25])).astype(np.float32)
+        class_weights = 4*np.sqrt(np.array([8.630769, 36.19355, 7.9349365, 5.712831, 21.412214, 17.69716, 79.014084, 20.701107, 20.932837, 47.542374, 42.82443, 59.68085, 32.057144, 701.25])).astype(np.float32)
         self.loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(class_weights).to(self.device))
         self.__parameter_keys = self.model.state_dict().keys()
 
@@ -154,6 +156,9 @@ class ModelTraining():
 
         avg_training_loss = []
 
+        if log:
+            #log(f'Training batch {batch_idx}/{len(self.training_data)} for {batch_end - batch_start:2.2f} sec , loss: {current_loss}...')
+            log(f'Training: ')
         for batch_idx, (inputs, targets) in enumerate(self.training_data):
             inputs = inputs.to(self.device)
             targets = targets.to(self.device)
@@ -173,8 +178,10 @@ class ModelTraining():
             avg_training_loss.append(current_loss)
 
             if log:
-                log(f'Training batch {batch_idx}/{len(self.training_data)} for {batch_end - batch_start:2.2f} sec , loss: {current_loss}...')
+                #log(f'Training batch {batch_idx}/{len(self.training_data)} for {batch_end - batch_start:2.2f} sec , loss: {current_loss}...')
+                log(f'.')
 
+        log(f'Validation:')
         avg_val_loss = []
         with torch.no_grad():
             for batch_idx, (inputs, targets) in enumerate(self.val_data):
@@ -194,7 +201,8 @@ class ModelTraining():
                 avg_val_loss.append(current_loss)
 
                 if log:
-                    log(f'Validation batch {batch_idx}/{len(self.val_data)} for {batch_end - batch_start:2.2f} sec , loss: {current_loss}...')
+                    #log(f'Validation batch {batch_idx}/{len(self.val_data)} for {batch_end - batch_start:2.2f} sec , loss: {current_loss}...')
+                    log(f'.', sep='')
 
 
         avg_training_loss = np.mean(avg_training_loss)
@@ -222,10 +230,7 @@ class ModelTraining():
                 scores = torch.sigmoid(logits)
                 
                 # use softmax instead of standard normalization
-                #outputs = outputs.softmax(dim=-1)
-                #predictions = (scores > 0.5).float()
-                predictions = scores
-                #log(f'Scores output: {scores}, Predictions: {predictions}')
+                predictions = (scores > 0.5).float()
 
                 # Concatenate this batch to the complete results
                 y_true = torch.cat((y_true, targets), 0)
@@ -233,23 +238,28 @@ class ModelTraining():
 
         y_true = y_true.cpu().detach().numpy()
         y_score = y_score.cpu().detach().numpy()
-        return y_true, y_score
-        precision, recall, f1, support = precision_recall_fscore_support(y_true, y_score)
-        return precision, recall, f1, y_score, y_true
+        
+        # Cannot handle mixture
+        #precision, recall, f1, support = precision_recall_fscore_support(y_true, y_score)
+        #return precision, recall, f1, y_score, y_true
         auc = 0
-        """
+        precisions = []
+        recalls = []
+        f1s = []
         for i in range(y_score.shape[1]):
             try:
                 label_auc = roc_auc_score(y_true[:, i], y_score[:, i])
-                precision, recall, f1, support = precision_recall_fscore_support(y_true[:, i])
+                precision, recall, f1, support = precision_recall_fscore_support(y_true[:, i], y_score[:, i])
+                precisions.append(precision)
+                recalls.append(recall)
+                f1s.append(f1)
                 auc += label_auc
-            except ValueError:
-                # If all labels are of the same value, an ValueError is thrown
-                # Equal to: auc += 0.0
+            except ValueError as e:
+                if log:
+                    log(f'Calculating precision recall for feature {i} failed! {e}')
                 pass
-
-        return auc / y_score.shape[1]
-        """
+        return precisions, recalls, f1s, y_score 
+        #return auc / y_score.shape[1]
 
 
     def get_weights(self) -> List[numpy.ndarray]:
