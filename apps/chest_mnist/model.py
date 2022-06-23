@@ -121,7 +121,7 @@ class ModelTraining():
             device_str : str = 'cpu',
             x_train_path : str ='/mnt/input/x_train.npy',
             y_train_path : str ='/mnt/input/y_train.npy',
-            x_test_path : str ='/mnt/input/x_text.npy',
+            x_test_path : str ='/mnt/input/x_test.npy',
             y_test_path : str ='/mnt/input/y_test.npy',
             x_val_path : str ='/mnt/input/x_val.npy',
             y_val_path : str ='/mnt/input/y_val.npy'
