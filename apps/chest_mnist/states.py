@@ -158,9 +158,14 @@ class AggregationState(AppState):
 
         # Stop the process after 3 iterations
         if iteration >= 3:
-            log(self, f'Storing prediction on test set in /mnt/output/test_predictions.csv ...')
-            test_results = pd.DataFrame(s.astype(int), columns=range(14))
-            test_results.to_csv('/mnt/output/test_predictions.csv', index=False)
+            log(self, f'Storing prediction on test set in /mnt/output/test_predictions.csv and /mnt/output/test_labels.csv ...')
+
+            test_labels = pd.DataFrame(l.astype(int), columns=range(14))
+            test_labels.to_csv('/mnt/output/test_labels.csv', index=False)
+
+            test_predictions = pd.DataFrame(s.astype(int), columns=range(14))
+            test_predictions.to_csv('/mnt/output/test_predictions.csv', index=False)
+ 
             iteration =-1
 
         log(self, f'Send results back ...')
