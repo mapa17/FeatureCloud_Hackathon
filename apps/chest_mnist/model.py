@@ -76,7 +76,8 @@ class ResNet18(nn.Module):
         self.layer4 = self.__make_layer(256, 512, stride=2)
         
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512, num_classes)
+        #self.fc = nn.Linear(512, num_classes)
+
         
     def __make_layer(self, in_channels, out_channels, stride):
         
@@ -272,7 +273,7 @@ class ModelTraining():
 
 
     def get_weights(self) -> List[numpy.ndarray]:
-        return [t.detach().numpy() for t in self.model.state_dict().values()]
+        return [t.cpu().detach().numpy() for t in self.model.state_dict().values()]
     
     def set_weights(self, weights : List[numpy.ndarray]):
         #new_parameters = {k: torch.from_numpy(v)  if v.size > 1 else torch.tensor(v) for k, v in zip(self.__parameter_keys, weights) }
