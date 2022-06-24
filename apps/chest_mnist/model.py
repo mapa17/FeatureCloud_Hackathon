@@ -244,7 +244,7 @@ class ModelTraining():
                 y_score = torch.cat((y_score, predictions), 0)
 
         y_true = y_true.cpu().detach().numpy()
-        y_score = y_score.cpu().detach().nummpy()
+        y_score = y_score.cpu().detach().numpy()
         # Remove the first artificial entry
         y_true = y_true[1:]
         y_score = y_score[1:]

@@ -129,13 +129,13 @@ class AggregationState(AppState):
         iteration = 0
         self.store('iteration', iteration)
 
-    def run(self):
+    def run(self, num_epochs=3):
 
         iteration = self.load('iteration')
 
         log(self, f'Starting model weight aggregation for iteration {iteration}')
         weights_all_cli = self.await_data(len(self.clients), is_json=False)
-        log(self, f'Got {len(weights)} model weights. Averaging them ...')
+        log(self, f'Got {len(weights_all_cli)} model weights. Averaging them ...')
         agg_weights = []
         ind2tensor_dict = {}
         tensor_list_len = len(weights_all_cli[0])
@@ -168,7 +168,7 @@ class AggregationState(AppState):
         self.store('iteration', iteration)
 
         # Stop the process after 3 iterations
-        if iteration >= 3:
+        if iteration >= num_epochs:
             log(self, f'Storing prediction on test set in /mnt/output/test_predictions.csv and /mnt/output/test_labels.csv ...')
 
             test_labels = pd.DataFrame(l.astype(int), columns=range(14))
