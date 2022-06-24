@@ -11,7 +11,7 @@ from sklearn.metrics import roc_auc_score, precision_recall_fscore_support
 from typing import Callable
 import time
 from torch.utils.data.dataloader import default_collate
-class ChestMNIST(Dataset):
+class ChestMNIST(Dataset, rgb_expand=False):
     def __init__(self, xPath : str, yPath : str):
         self.img = np.load(xPath)
         self.img_labels = np.load(yPath)
@@ -19,12 +19,15 @@ class ChestMNIST(Dataset):
             transforms.ToTensor(),
             transforms.Normalize(mean=[.5], std=[.5])
         ])
+        self.rgb_expand = rgb_expand
 
     def __len__(self):
         return len(self.img_labels)
 
     def __getitem__(self, idx):
-        img = Image.fromarray(self.img[idx])
+        img = Image.fromarray(self.img[idx]).convert('RGB')
+        if self.rgb_expand:
+            img.convert('RGB')
         img = self.transform(img)
         label = self.img_labels[idx]
         return img, label
