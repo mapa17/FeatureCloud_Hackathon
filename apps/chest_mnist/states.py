@@ -40,43 +40,35 @@ class InitialState(AppState):
     def run(self):
         self.log(f'Starting Initialization for node {self.id} ...')
 
-        md = ModelTraining()
-        self.store('md', md)
-
         if self.is_coordinator:
+            md = ModelTraining(x_test_path='/mnt/input/x_test.npy', y_test_path='/mnt/input/y_test.npy')
+            self.store('md', md)
+
             W = md.get_weights()
             self.broadcast_data((0, W))
-            #return States.distribute_initial_model.value
-            #return States.receive_data.value
+        else:
+            md = ModelTraining()
+            self.store('md', md)
         
         return States.compute.value
 
 """
 @app_state(States.distribute_initial_model.value, Role.COORDINATOR)
 class DistributeDataState(AppState):
-
     def register(self):
         self.register_transition(States.receive_data.value, role=Role.COORDINATOR)  # We declare that 'terminal' state is accessible from the 'initial' state.
-
     def run(self):
         self.log(f'{self.id} Split data for {len(self.clients)} clients ...')
-
         self.log('Distribute initial model parameters ...')
         #self.send_data_to_participant(np.random.random(10), self.clients)
         self.broadcast_data((0, np.random.random(1), np.random.random(10)))
-
         return States.receive_data.value  # This means we are done. If the coordinator transitions into the 'terminal' state, the whole computation will be shut down.
-
-
 @app_state(States.receive_data.value, Role.BOTH)
 class ReceiveDataState(AppState):
-
     def register(self):
         self.register_transition(States.compute.value, role=Role.BOTH)  # We declare that 'terminal' state is accessible from the 'initial' state.
-
     def run(self):
         return States.compute.value  # This means we are done. If the coordinator transitions into the 'terminal' state, the whole computation will be shut down.
-
 """
 
 @app_state(States.compute.value, Role.BOTH)
@@ -112,10 +104,11 @@ class ComputeState(AppState):
             #lens = [x.size for x in params]
             #log(self, f'Param lens: {lens}')
             md.set_weights(params)
-            md.train_single_epoch()
+            training_loss, val_loss = md.train_single_epoch(self.mylog)
+            log(self, f'Avg. Training loss {training_loss}, avg. validation loss {val_loss}')
             #auc = md.get_test_score()
             #log(self, f'Local model performance AUC {auc}. Send model to coordinator')
-            p, r, f1 = md.get_test_score()
+            p, r, f1, s, l = md.get_test_score(self.mylog)
             log(self, f'Local model performance precision: {p}, recall: {r}, f1: {f1}. Send model to coordinator')
             self.send_data_to_coordinator(md.get_weights())
 
@@ -128,6 +121,9 @@ class ComputeState(AppState):
 @app_state(States.aggregate_models.value, Role.COORDINATOR)
 class AggregationState(AppState):
 
+    def mylog(self, msg):
+       self.log(f'{self.id}/{"Coordinator" if self.is_coordinator else "Participants"}: {msg}')
+
     def register(self):
         self.register_transition(States.compute.value, role=Role.COORDINATOR)  # We declare that 'terminal' state is accessible from the 'initial' state.
         iteration = 0
@@ -139,7 +135,7 @@ class AggregationState(AppState):
 
         log(self, f'Starting model weight aggregation for iteration {iteration}')
         weights_all_cli = self.await_data(len(self.clients), is_json=False)
-        log(self, f'Got {len(weights_all_cli)} model weights. Averaging them ...')
+        log(self, f'Got {len(weights)} model weights. Averaging them ...')
         agg_weights = []
         ind2tensor_dict = {}
         tensor_list_len = len(weights_all_cli[0])
@@ -165,18 +161,24 @@ class AggregationState(AppState):
         log(self, f'Evaluate global model ...')
         md = self.load('md')
         md.set_weights(agg_weights)
-        p, r, f1 = md.get_test_score()
+        p, r, f1, s, l = md.get_test_score(self.mylog)
         log(self, f'[Iteration {iteration}] Global model performance precision: {p}, recall: {r}, f1: {f1}')
-           
+
         iteration+=1
         self.store('iteration', iteration)
 
         # Stop the process after 3 iterations
         if iteration >= 3:
+            log(self, f'Storing prediction on test set in /mnt/output/test_predictions.csv and /mnt/output/test_labels.csv ...')
+
+            test_labels = pd.DataFrame(l.astype(int), columns=range(14))
+            test_labels.to_csv('/mnt/output/test_labels.csv', index=False)
+
+            test_predictions = pd.DataFrame(s.astype(int), columns=range(14))
+            test_predictions.to_csv('/mnt/output/test_predictions.csv', index=False)
+ 
             iteration =-1
 
         log(self, f'Send results back ...')
         self.broadcast_data((iteration, agg_weights))
         return States.compute.value  # This means we are done. If the coordinator transitions into the 'terminal' state, the whole computation will be shut down.
-
-
