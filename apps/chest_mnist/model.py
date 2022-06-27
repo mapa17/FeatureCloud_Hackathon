@@ -11,8 +11,10 @@ from sklearn.metrics import roc_auc_score, precision_recall_fscore_support
 from typing import Callable
 import time
 from torch.utils.data.dataloader import default_collate
-class ChestMNIST(Dataset, rgb_expand=False):
-    def __init__(self, xPath : str, yPath : str):
+
+import timm
+class ChestMNIST(Dataset):
+    def __init__(self, xPath : str, yPath : str, rgb_expand=False):
         self.img = np.load(xPath)
         self.img_labels = np.load(yPath)
         self.transform = transforms.Compose([
@@ -58,7 +60,24 @@ class Block(nn.Module):
         x = self.relu(x)
         return x
 
-    
+class EfficentNet():
+    def __init__(self, ):
+        pass
+
+    def __new__(cls, num_classes):
+
+        m = timm.create_model('efficientnet_b1_pruned', pretrained=True, num_classes=num_classes)
+
+        # Freeze all but the last layer ...
+        ll = list(m.children())
+        for l in ll[:-1]:
+            for p in l.parameters():
+                p.requires_grad = False
+        for p in ll[-1].parameters():
+            p.requires_grad = True 
+        
+        return m
+   
 class ResNet18(nn.Module):
     
     def __init__(self, image_channels, num_classes):
@@ -120,8 +139,8 @@ class ResNet18(nn.Module):
         )
 
 class ModelTraining():
-    def __init__(self,
-            lr : float = 0.001, momentum : float = 0.9, batch_size=128,
+    def __init__(self, model : nn.Module,
+            rgb_expand=False, lr : float = 0.001, momentum : float = 0.9, batch_size=128,
             device_str : str = 'cpu',
             x_train_path : str ='/mnt/input/x_train.npy',
             y_train_path : str ='/mnt/input/y_train.npy',
@@ -137,7 +156,7 @@ class ModelTraining():
             self.training_data = None
             class_weights = torch.Tensor([1.0])
         else:
-            self.training_data = DataLoader(ChestMNIST(x_train_path, y_train_path), batch_size=batch_size, shuffle=True)
+            self.training_data = DataLoader(ChestMNIST(x_train_path, y_train_path, rgb_expand=rgb_expand), batch_size=batch_size, shuffle=True)
             T=torch.cat([x[1] for x in self.training_data])
             class_weights = T.shape[0] / T.sum(axis=0)
             class_weights = 4*np.sqrt(class_weights)
@@ -146,16 +165,18 @@ class ModelTraining():
         if x_test_path is None:
             self.testing_data = None
         else:
-            self.testing_data = DataLoader(ChestMNIST(x_test_path, y_test_path), batch_size=batch_size, shuffle=False)
+            self.testing_data = DataLoader(ChestMNIST(x_test_path, y_test_path, rgb_expand=rgb_expand), batch_size=batch_size, shuffle=False)
     
         if x_val_path is None:
             self.val_data = None
         else:
-            self.val_data = DataLoader(ChestMNIST(x_val_path, y_val_path), batch_size=batch_size, shuffle=False)
+            self.val_data = DataLoader(ChestMNIST(x_val_path, y_val_path, rgb_expand=rgb_expand), batch_size=batch_size, shuffle=False)
 
-        self.model = ResNet18(image_channels=1, num_classes=14).to(self.device)
+        #self.model = ResNet18(image_channels=1, num_classes=14).to(self.device)
+        self.model = model.to(self.device) 
         self.optimizer = optim.SGD(self.model.parameters(), lr=lr, momentum=momentum) 
         #self.optimizer = optim.Adam(self.model.parameters()) 
+        class_weights = torch.Tensor([1.0])
         self.loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(class_weights).to(self.device))
         self.__parameter_keys = self.model.state_dict().keys()
 
@@ -169,6 +190,7 @@ class ModelTraining():
             log(f'Training ...')
 
         training_start = time.time()
+        self.model.train()
         for batch_idx, (inputs, targets) in enumerate(self.training_data):
             inputs = inputs.to(self.device)
             targets = targets.to(self.device)
@@ -191,8 +213,8 @@ class ModelTraining():
                 #log(f'Training batch {batch_idx}/{len(self.training_data)} for {batch_end - batch_start:2.2f} sec , loss: {current_loss}...')
                 pass
         
-
         log(f'Validation ...')
+        self.model.eval()
         avg_val_loss = []
         with torch.no_grad():
             for batch_idx, (inputs, targets) in enumerate(self.val_data):

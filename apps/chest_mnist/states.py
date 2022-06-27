@@ -8,7 +8,7 @@ from enum import Enum
 import torch
 from torch.utils.data import Dataset
 
-from model import ModelTraining
+from model import ModelTraining, ResNet18, EfficentNet
 from functools import partial
 
 df_train = pd.DataFrame()
@@ -39,7 +39,7 @@ class InitialState(AppState):
 
     def run(self):
         self.log(f'Starting Initialization for node {self.id} ...')
-
+        model = ResNet18(image_channels=1, num_classes=14)
         if self.is_coordinator:
             md = ModelTraining(x_test_path='/mnt/input/x_test.npy', y_test_path='/mnt/input/y_test.npy')
             self.store('md', md)
